@@ -96,19 +96,22 @@ def extract_product_pages(page):
 def process_product_pages(links):
     for link in links:
         url = DOMAIN_NAME+link.get('href')
-        name = link.get('href').strip('/')
-        linklist = extract_product_picutres(url)
+        name = link.get('href').split('/')[-1]
+        linklist = extract_product_pictures_links(url)
 
         path = './'+name
+        print "Path is: "+path
         if os.path.exists(path):
             print "WTF"
-            return None
+            import pdb; pdb.set_trace()
 
         os.makedirs(path)
         os.chdir(path)
 
         rs = [async.get(link, hooks=dict(response=process_resp)) for link in linklist]
         responses = async.map(rs)
+        print "done"
+        os.chdir('../')
 
 ## FIXME
 
@@ -116,7 +119,8 @@ def process_product_pages(links):
 def process_resp(resp):
     image = resp.content
 
-    fout = open(resp.url, 'wb')
+    filename = resp.url.split('/')[-1]
+    fout = open(filename, 'wb')
     fout.write(image)
     fout.close()
     print "Saved image!"
@@ -138,8 +142,6 @@ def extract_product_pictures_links(url):
         linklist.append(img.get('src'))
 
     return linklist
-
-
 
 
 if "__main__" == __name__:
