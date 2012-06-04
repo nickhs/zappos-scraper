@@ -3,12 +3,13 @@ import requests
 import gevent ## may not be needed
 import os
 from requests import async
+import pika
 
-DOMAIN_NAME = "http://www.zappos.com/"
+DOMAIN_NAME = "http://www.zappos.com"
 
 def main():
-    start_page = 1
-    end_page = 4
+    start_page = 4
+    end_page = 10
     counter = start_page
 
     for page in xrange(start_page, end_page):
@@ -25,6 +26,8 @@ def main2():
     end_page = 4
     counter = start_page
 
+    os.chdir('./shit')
+
     for page in xrange(start_page, end_page):
         page = get_page(counter)
         links = extract_product_pages(page)
@@ -36,7 +39,7 @@ def get_page(page_num):
     page_num = str(page_num)
     url = "http://www.zappos.com/shoes~3W?p="+page_num+"&s=recentSalesStyle/desc/"
     r = requests.get(url)
-    
+
     if r.status_code is not 200:
         print r.status_code+": Failed to get: "+url
         return None
@@ -88,35 +91,44 @@ def extract_product_pages(page):
     s = BeautifulSoup(page)
     search_results = s.find(id="searchResults")
     links = search_results.find_all('a')
-    
     ## This a list of links to the individual product pages
     return links
 
 
 def process_product_pages(links):
+    pid = 1
+    threads = []
+
+    connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+    channel = connection.channel()
+    channel.queue_declare(queue='main')
+
     for link in links:
-        url = DOMAIN_NAME+link.get('href')
-        name = link.get('href').split('/')[-1]
-        linklist = extract_product_pictures_links(url)
+        message = DOMAIN_NAME+link.get('href')
+        channel.basic_publish(exchange='', routing_key='main', body=message)
 
-        path = './'+name
-        print "Path is: "+path
-        if os.path.exists(path):
-            print "WTF"
-            import pdb; pdb.set_trace()
+    # for link in links:
+    #     thread = gevent.spawn(task_process_page, pid, link)
+    #     pid = pid+1
+    #     threads.append(thread)
 
-        os.makedirs(path)
-        os.chdir(path)
+    # gevent.joinall(threads)
 
-        rs = [async.get(link, hooks=dict(response=process_resp)) for link in linklist]
-        responses = async.map(rs)
-        print "done"
-        os.chdir('../')
+
+def task_process_page(pid, link):
+    url = DOMAIN_NAME+link.get('href')
+    name = link.get('href').split('/')[-1]
+    linklist = extract_product_pictures_links(url)
+
+    rs = [async.get(link, hooks=dict(response=process_resp, data='hi')) for link in linklist]
+    responses = async.map(rs)
+    print "Completed ["+str(pid)+"]"
 
 ## FIXME
 
 
-def process_resp(resp):
+def process_resp(resp, data):
+    print data
     image = resp.content
 
     filename = resp.url.split('/')[-1]
